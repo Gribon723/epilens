@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import app.models  # noqa: F401 — registers all models with SQLAlchemy
+from app.api.routes import auth
+
 app = FastAPI(
     title="EpiLens API",
     description="Epidemiological analysis platform backed by WHO Global Health Observatory data",
@@ -14,6 +17,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+app.include_router(auth.router)
 
 
 @app.get("/health")

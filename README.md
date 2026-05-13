@@ -70,7 +70,7 @@ epilens/
 └── README.md
 ```
 
----
+-
 
 ## Developer
 Gribon Osoro, built as a portfolio project demonstrating full-stack engineering and epidemiological data analysis.
