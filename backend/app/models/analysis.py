@@ -1,7 +1,7 @@
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -16,10 +16,10 @@ class Analysis(Base):
     title = Column(String, nullable=False)
     description = Column(Text)
     indicator_code = Column(String, nullable=False)
-    countries = Column(ARRAY(String))
+    countries = Column(JSON)
     year_start = Column(Integer)
     year_end = Column(Integer)
-    config = Column(JSONB)
+    config = Column(JSON)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
