@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 import app.models  # noqa: F401 — registers all models with SQLAlchemy
-from app.api.routes import auth
+from app.api.routes import auth, indicators
 
 app = FastAPI(
     title="EpiLens API",
@@ -20,6 +20,7 @@ app.add_middleware(
 
 
 app.include_router(auth.router)
+app.include_router(indicators.router)
 
 
 @app.get("/health")
