@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { createAnalysis } from '../api/analyses'
 import { getIndicatorData, getIndicators } from '../api/indicators'
 import { getAnomalies, getTrend } from '../api/stats'
+import AnomalyChart from '../components/charts/AnomalyChart'
 import TrendChart from '../components/charts/TrendChart'
 import EmptyState from '../components/ui/EmptyState'
 import Spinner from '../components/ui/Spinner'
@@ -382,34 +383,54 @@ export default function Explorer() {
 
           {/* Anomalies tab */}
           {activeTab === 'anomalies' && anomalyResult && (
-            <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5">
+            <div className="space-y-4">
               {anomalyResult.anomalies?.length === 0 ? (
-                <EmptyState
-                  title="No anomalies detected"
-                  message="The data shows no statistically significant deviations from the rolling 5-year baseline."
-                />
-              ) : (
-                <div className="space-y-2">
-                  <p className="font-sans text-sm text-slate-500 mb-3">
-                    {anomalyResult.total_anomalies} anomalous year{anomalyResult.total_anomalies !== 1 ? 's' : ''} detected
-                  </p>
-                  {anomalyResult.anomalies.map((a, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-4 bg-crimson/5 border border-crimson/20 rounded-xl px-4 py-3
-                        shadow-[0_0_12px_rgba(230,57,70,0.06)]"
-                    >
-                      <span className="font-mono font-medium text-crimson text-sm w-14 shrink-0">{a.year}</span>
-                      {a.country && <span className="font-mono text-slate-500 text-xs">{a.country}</span>}
-                      <span className="font-mono text-slate-300 text-sm">{a.value?.toFixed(3)}</span>
-                      {a.deviation != null && (
-                        <span className="ml-auto font-mono text-xs text-crimson shrink-0">
-                          {a.deviation > 0 ? '+' : ''}{a.deviation.toFixed(2)} σ
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5">
+                  <EmptyState
+                    title="No anomalies detected"
+                    message="The data shows no statistically significant deviations from the rolling 5-year baseline."
+                  />
                 </div>
+              ) : (
+                <>
+                  {/* AnomalyChart -- visualises the first selected country with pulsing crimson dots */}
+                  <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5">
+                    <p className="font-sans text-sm text-slate-400 mb-4">
+                      <span className="text-slate-200 font-medium">{selectedCountries[0]}</span>
+                      <span className="ml-2 font-mono text-xs text-slate-600">pulsing dots = anomaly years</span>
+                    </p>
+                    <AnomalyChart
+                      data={chartData}
+                      country={selectedCountries[0]}
+                      anomalyYears={anomalyYears}
+                    />
+                  </div>
+
+                  {/* Anomaly detail list */}
+                  <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5">
+                    <p className="font-sans text-sm text-slate-500 mb-3">
+                      {anomalyResult.total_anomalies} anomalous year{anomalyResult.total_anomalies !== 1 ? 's' : ''} detected
+                    </p>
+                    <div className="space-y-2">
+                      {anomalyResult.anomalies.map((a, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center gap-4 bg-crimson/5 border border-crimson/20 rounded-xl px-4 py-3
+                            shadow-[0_0_12px_rgba(230,57,70,0.06)]"
+                        >
+                          <span className="font-mono font-medium text-crimson text-sm w-14 shrink-0">{a.year}</span>
+                          {a.country && <span className="font-mono text-slate-500 text-xs">{a.country}</span>}
+                          <span className="font-mono text-slate-300 text-sm">{a.value?.toFixed(3)}</span>
+                          {a.deviation != null && (
+                            <span className="ml-auto font-mono text-xs text-crimson shrink-0">
+                              {a.deviation > 0 ? '+' : ''}{a.deviation.toFixed(2)} σ
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           )}

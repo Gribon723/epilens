@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getIndicatorData, getIndicators } from '../api/indicators'
+import { getBurden } from '../api/stats'
+import BurdenChart from '../components/charts/BurdenChart'
 import { CHART_COLORS } from '../components/charts/TrendChart'
 import TrendChart from '../components/charts/TrendChart'
 import EmptyState from '../components/ui/EmptyState'
@@ -12,6 +14,9 @@ export default function Compare() {
   const [search, setSearch] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
   const [selectedIndicator, setSelectedIndicator] = useState(null)
+  const [activeTab, setActiveTab] = useState('chart')
+  const [burdenResult, setBurdenResult] = useState([])
+  const [loadingBurden, setLoadingBurden] = useState(false)
 
   const [rawData, setRawData] = useState([])
   const [availableCountries, setAvailableCountries] = useState([])
@@ -209,49 +214,117 @@ export default function Compare() {
         </div>
       )}
 
-      {/* Chart */}
+      {/* Chart + tabs */}
       {chartData.length > 0 && selectedCountries.length > 0 && (
         <div className="space-y-4">
-          <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5">
-            <p className="font-sans text-sm text-slate-400 mb-4">
-              <span className="text-slate-200 font-medium">{selectedIndicator?.name}</span>
-              <span className="ml-2 font-mono text-xs text-slate-600">{yearMin}–{yearMax}</span>
-            </p>
-            <TrendChart data={chartData} countries={selectedCountries} height={340} />
+          {/* Tab bar */}
+          <div className="flex gap-1 p-1 bg-white/[0.03] border border-white/10 rounded-xl w-full sm:w-fit">
+            {[
+              { key: 'chart', label: 'Line Chart' },
+              { key: 'table', label: 'Stats Table' },
+              { key: 'burden', label: 'Burden Index' },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={async () => {
+                  setActiveTab(key)
+                  if (key === 'burden' && burdenResult.length === 0) {
+                    setLoadingBurden(true)
+                    try {
+                      const filtered = rawData.filter(r =>
+                        selectedCountries.includes(r.country) &&
+                        r.year >= yearMin && r.year <= yearMax
+                      )
+                      setBurdenResult(await getBurden(filtered))
+                    } catch { /* errors shown in UI */ }
+                    finally { setLoadingBurden(false) }
+                  }
+                }}
+                className={`flex-1 sm:flex-none py-2 px-4 rounded-lg text-sm font-sans transition-all whitespace-nowrap ${
+                  activeTab === key
+                    ? 'bg-teal/10 text-teal border border-teal/20'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
-          {/* Comparison table */}
-          <div className="bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b border-white/10">
-                  <tr>
-                    {['Country', 'Mean', 'Min', 'Max', 'Latest value'].map(h => (
-                      <th key={h} className="text-left px-4 py-3 font-sans text-xs text-slate-500 font-medium uppercase tracking-widest whitespace-nowrap">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/[0.04]">
-                  {comparisonStats.map(s => (
-                    <tr key={s.country} className="hover:bg-white/[0.02] transition-colors">
-                      <td className="px-4 py-3">
-                        <span className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-                          <span className="font-mono text-slate-300 text-xs">{s.country}</span>
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-slate-300 text-xs">{s.mean.toFixed(3)}</td>
-                      <td className="px-4 py-3 font-mono text-slate-500 text-xs">{s.min.toFixed(3)}</td>
-                      <td className="px-4 py-3 font-mono text-slate-500 text-xs">{s.max.toFixed(3)}</td>
-                      <td className="px-4 py-3 font-mono text-teal text-xs">{s.latest?.toFixed(3) ?? '–'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {/* Line Chart tab */}
+          {activeTab === 'chart' && (
+            <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5">
+              <p className="font-sans text-sm text-slate-400 mb-4">
+                <span className="text-slate-200 font-medium">{selectedIndicator?.name}</span>
+                <span className="ml-2 font-mono text-xs text-slate-600">{yearMin}–{yearMax}</span>
+              </p>
+              <TrendChart data={chartData} countries={selectedCountries} height={340} />
             </div>
-          </div>
+          )}
+
+          {/* Stats Table tab */}
+          {activeTab === 'table' && (
+            <div className="bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b border-white/10">
+                    <tr>
+                      {['Country', 'Mean', 'Min', 'Max', 'Latest value'].map(h => (
+                        <th key={h} className="text-left px-4 py-3 font-sans text-xs text-slate-500 font-medium uppercase tracking-widest whitespace-nowrap">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.04]">
+                    {comparisonStats.map(s => (
+                      <tr key={s.country} className="hover:bg-white/[0.02] transition-colors">
+                        <td className="px-4 py-3">
+                          <span className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                            <span className="font-mono text-slate-300 text-xs">{s.country}</span>
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-300 text-xs">{s.mean.toFixed(3)}</td>
+                        <td className="px-4 py-3 font-mono text-slate-500 text-xs">{s.min.toFixed(3)}</td>
+                        <td className="px-4 py-3 font-mono text-slate-500 text-xs">{s.max.toFixed(3)}</td>
+                        <td className="px-4 py-3 font-mono text-teal text-xs">{s.latest?.toFixed(3) ?? '–'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Burden Index tab */}
+          {activeTab === 'burden' && (
+            <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5">
+              {loadingBurden ? (
+                <div className="flex items-center justify-center gap-3 py-10 text-slate-500">
+                  <Spinner />
+                  <span className="font-sans text-sm">Computing burden index…</span>
+                </div>
+              ) : burdenResult.length > 0 ? (
+                <>
+                  <p className="font-sans text-sm text-slate-400 mb-1">
+                    Relative burden score (0 = lowest, 1 = highest) across selected countries
+                  </p>
+                  <p className="font-mono text-xs text-slate-600 mb-4">
+                    <span className="text-teal">■</span> low &nbsp;
+                    <span className="text-blue-400">■</span> moderate &nbsp;
+                    <span className="text-amber-400">■</span> high &nbsp;
+                    <span className="text-crimson">■</span> very high
+                  </p>
+                  <BurdenChart data={burdenResult} />
+                </>
+              ) : (
+                <p className="font-sans text-sm text-slate-500 py-8 text-center">
+                  No burden data available.
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 

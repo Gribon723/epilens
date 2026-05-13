@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import useAuthStore from '../store/authStore'
@@ -53,7 +54,12 @@ export default function Register() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-navy px-4">
-      <div className="w-full max-w-md">
+      <motion.div
+        className="w-full max-w-md"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: 'easeOut' }}
+      >
         <h1 className="font-display text-4xl font-bold text-teal mb-2 text-center">EpiLens</h1>
         <p className="text-slate-400 text-center mb-8 font-sans">Create your account</p>
 
@@ -156,7 +162,7 @@ export default function Register() {
             </Link>
           </p>
         </form>
-      </div>
+      </motion.div>
     </div>
   )
 }

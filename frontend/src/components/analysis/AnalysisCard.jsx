@@ -1,7 +1,8 @@
+import { motion } from 'framer-motion'
 import { useState } from 'react'
 import { deleteAnalysis } from '../../api/analyses'
 
-export default function AnalysisCard({ analysis, onDeleted }) {
+export default function AnalysisCard({ analysis, onDeleted, index = 0 }) {
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -23,9 +24,15 @@ export default function AnalysisCard({ analysis, onDeleted }) {
   }
 
   return (
-    <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-5
-      hover:border-white/20 hover:bg-white/[0.05] transition-all duration-200 flex flex-col gap-3">
-
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.22, ease: 'easeOut', delay: index * 0.06 }}
+      whileHover={{ y: -3, transition: { duration: 0.15 } }}
+      className="bg-white/[0.03] border border-white/10 rounded-2xl p-5
+        hover:border-white/20 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(0,0,0,0.3)]
+        transition-colors duration-200 flex flex-col gap-3 cursor-default"
+    >
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <h3 className="font-display font-semibold text-white text-sm leading-snug line-clamp-2">
@@ -43,7 +50,7 @@ export default function AnalysisCard({ analysis, onDeleted }) {
         </p>
       )}
 
-      {/* Countries */}
+      {/* Country chips */}
       {countries.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {countries.slice(0, 5).map(c => (
@@ -80,6 +87,6 @@ export default function AnalysisCard({ analysis, onDeleted }) {
           {deleting ? 'Deleting…' : confirmDelete ? 'Confirm?' : 'Delete'}
         </button>
       </div>
-    </div>
+    </motion.div>
   )
 }
