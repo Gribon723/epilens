@@ -1,18 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
-import { getIndicatorData, getIndicators } from '../api/indicators'
+import { useMemo, useState } from 'react'
 import { getBurden } from '../api/stats'
 import BurdenChart from '../components/charts/BurdenChart'
 import { CHART_COLORS } from '../components/charts/TrendChart'
 import TrendChart from '../components/charts/TrendChart'
 import EmptyState from '../components/ui/EmptyState'
+import IndicatorSearch from '../components/ui/IndicatorSearch'
 import Spinner from '../components/ui/Spinner'
+import useIndicators from '../hooks/useIndicators'
 
 const MAX_COUNTRIES = 8
 
 export default function Compare() {
-  const [indicators, setIndicators] = useState([])
-  const [search, setSearch] = useState('')
-  const [showDropdown, setShowDropdown] = useState(false)
+  const { indicators, loading: loadingIndicators, fetchData } = useIndicators()
+
   const [selectedIndicator, setSelectedIndicator] = useState(null)
   const [activeTab, setActiveTab] = useState('chart')
   const [burdenResult, setBurdenResult] = useState([])
@@ -25,35 +25,18 @@ export default function Compare() {
   const [yearMax, setYearMax] = useState(2023)
   const [dataYearBounds, setDataYearBounds] = useState([2000, 2023])
 
-  const [loading, setLoading] = useState({ indicators: false, data: false })
+  const [loadingData, setLoadingData] = useState(false)
   const [error, setError] = useState(null)
 
-  useEffect(() => {
-    setLoading(l => ({ ...l, indicators: true }))
-    getIndicators()
-      .then(setIndicators)
-      .catch(() => setError('Could not load indicators. Is the backend running?'))
-      .finally(() => setLoading(l => ({ ...l, indicators: false })))
-  }, [])
-
-  const filteredIndicators = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return indicators.slice(0, 80)
-    return indicators.filter(i =>
-      i.name?.toLowerCase().includes(q) || i.code?.toLowerCase().includes(q)
-    ).slice(0, 80)
-  }, [indicators, search])
-
-  async function loadData(indicator) {
+  async function handleIndicatorSelect(indicator) {
     setSelectedIndicator(indicator)
-    setShowDropdown(false)
-    setSearch(indicator.name)
     setRawData([])
     setSelectedCountries([])
+    setBurdenResult([])
     setError(null)
-    setLoading(l => ({ ...l, data: true }))
+    setLoadingData(true)
     try {
-      const data = await getIndicatorData(indicator.code)
+      const data = await fetchData(indicator.code)
       const countries = [...new Set(data.map(r => r.country))].filter(Boolean).sort()
       const years = data.map(r => r.year).filter(Boolean)
       const minY = Math.min(...years)
@@ -67,7 +50,7 @@ export default function Compare() {
     } catch (e) {
       setError(e.response?.data?.detail ?? 'Failed to load indicator data.')
     } finally {
-      setLoading(l => ({ ...l, data: false }))
+      setLoadingData(false)
     }
   }
 
@@ -79,7 +62,6 @@ export default function Compare() {
     )
   }
 
-  // Build chart data
   const chartData = useMemo(() => {
     if (!rawData.length || !selectedCountries.length) return []
     const filtered = rawData.filter(r =>
@@ -94,7 +76,6 @@ export default function Compare() {
     return Object.values(map).sort((a, b) => a.year - b.year)
   }, [rawData, selectedCountries, yearMin, yearMax])
 
-  // Comparison stats table
   const comparisonStats = useMemo(() => {
     return selectedCountries.map((c, i) => {
       const values = rawData
@@ -129,44 +110,14 @@ export default function Compare() {
         </div>
       )}
 
-      {/* Indicator selector */}
       <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5">
-        <label className="block font-sans text-xs text-slate-500 mb-2 uppercase tracking-widest">Indicator</label>
-        <div className="relative">
-          <input
-            value={search}
-            onChange={e => { setSearch(e.target.value); setShowDropdown(true) }}
-            onFocus={() => setShowDropdown(true)}
-            placeholder={loading.indicators ? 'Loading…' : 'Search indicator…'}
-            disabled={loading.indicators}
-            className="w-full bg-slate-800/50 border border-white/10 rounded-xl px-4 py-2.5 text-sm
-              font-sans text-slate-100 placeholder:text-slate-600 outline-none
-              focus:border-teal/40 focus:shadow-[0_0_0_3px_rgba(0,212,170,0.07)] transition-all"
-          />
-          {loading.indicators && <Spinner size="sm" className="absolute right-3 top-1/2 -translate-y-1/2" />}
-
-          {showDropdown && filteredIndicators.length > 0 && !loading.indicators && (
-            <div className="absolute z-30 mt-1.5 w-full bg-slate-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden">
-              <div className="max-h-52 overflow-y-auto divide-y divide-white/[0.04]">
-                {filteredIndicators.map(ind => (
-                  <button
-                    key={ind.code}
-                    onMouseDown={() => loadData(ind)}
-                    className="w-full text-left px-4 py-2.5 hover:bg-teal/10 transition-colors flex items-center gap-3"
-                  >
-                    <span className="font-mono text-[10px] text-teal shrink-0 bg-teal/10 border border-teal/20 rounded px-1.5 py-0.5">
-                      {ind.code}
-                    </span>
-                    <span className="font-sans text-sm text-slate-300 truncate">{ind.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        <IndicatorSearch
+          indicators={indicators}
+          loading={loadingIndicators}
+          onSelect={handleIndicatorSelect}
+        />
       </div>
 
-      {/* Controls */}
       {rawData.length > 0 && (
         <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5 space-y-4">
           <div>
@@ -207,17 +158,15 @@ export default function Compare() {
         </div>
       )}
 
-      {loading.data && (
+      {loadingData && (
         <div className="flex items-center justify-center gap-3 py-12 text-slate-500">
           <Spinner />
           <span className="font-sans text-sm">Loading WHO data…</span>
         </div>
       )}
 
-      {/* Chart + tabs */}
       {chartData.length > 0 && selectedCountries.length > 0 && (
         <div className="space-y-4">
-          {/* Tab bar */}
           <div className="flex gap-1 p-1 bg-white/[0.03] border border-white/10 rounded-xl w-full sm:w-fit">
             {[
               { key: 'chart', label: 'Line Chart' },
@@ -236,7 +185,7 @@ export default function Compare() {
                         r.year >= yearMin && r.year <= yearMax
                       )
                       setBurdenResult(await getBurden(filtered))
-                    } catch { /* errors shown in UI */ }
+                    } catch { /* shown in UI */ }
                     finally { setLoadingBurden(false) }
                   }
                 }}
@@ -251,7 +200,6 @@ export default function Compare() {
             ))}
           </div>
 
-          {/* Line Chart tab */}
           {activeTab === 'chart' && (
             <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5">
               <p className="font-sans text-sm text-slate-400 mb-4">
@@ -262,7 +210,6 @@ export default function Compare() {
             </div>
           )}
 
-          {/* Stats Table tab */}
           {activeTab === 'table' && (
             <div className="bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden">
               <div className="overflow-x-auto">
@@ -297,7 +244,6 @@ export default function Compare() {
             </div>
           )}
 
-          {/* Burden Index tab */}
           {activeTab === 'burden' && (
             <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5">
               {loadingBurden ? (
@@ -328,7 +274,7 @@ export default function Compare() {
         </div>
       )}
 
-      {!loading.indicators && !loading.data && !rawData.length && !error && (
+      {!loadingIndicators && !loadingData && !rawData.length && !error && (
         <EmptyState
           icon={
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-7 h-7">
@@ -341,8 +287,6 @@ export default function Compare() {
           message="Select an indicator above, then choose countries to compare."
         />
       )}
-
-      {showDropdown && <div className="fixed inset-0 z-20" onClick={() => setShowDropdown(false)} />}
     </div>
   )
 }
