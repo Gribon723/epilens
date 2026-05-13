@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { createAnalysis } from '../api/analyses'
-import { getIndicatorData, getIndicators } from '../api/indicators'
-import { getAnomalies, getTrend } from '../api/stats'
+import { useMemo, useState } from 'react'
+import useAnalysis from '../hooks/useAnalysis'
+import useIndicators from '../hooks/useIndicators'
 import AnomalyChart from '../components/charts/AnomalyChart'
 import TrendChart from '../components/charts/TrendChart'
 import EmptyState from '../components/ui/EmptyState'
+import IndicatorSearch from '../components/ui/IndicatorSearch'
 import Spinner from '../components/ui/Spinner'
 import StatBadge from '../components/ui/StatBadge'
 
@@ -13,69 +12,42 @@ const MAX_COUNTRIES = 6
 const TREND_ICON = { increasing: '↑', decreasing: '↓', stable: '→' }
 
 export default function Explorer() {
-  const navigate = useNavigate()
+  const { indicators, loading: loadingIndicators, fetchData } = useIndicators()
+  const {
+    trendResult, anomalyResult,
+    loading: loadingAnalysis, saving,
+    error: analysisError,
+    runAnalysis, saveAnalysis, reset,
+  } = useAnalysis()
 
-  // Indicator picker
-  const [indicators, setIndicators] = useState([])
-  const [search, setSearch] = useState('')
-  const [showDropdown, setShowDropdown] = useState(false)
   const [selectedIndicator, setSelectedIndicator] = useState(null)
-
-  // Loaded data
   const [rawData, setRawData] = useState([])
   const [availableCountries, setAvailableCountries] = useState([])
   const [selectedCountries, setSelectedCountries] = useState([])
   const [yearMin, setYearMin] = useState(2000)
   const [yearMax, setYearMax] = useState(2023)
   const [dataYearBounds, setDataYearBounds] = useState([2000, 2023])
-
-  // Analysis results
-  const [trendResult, setTrendResult] = useState(null)
-  const [anomalyResult, setAnomalyResult] = useState(null)
   const [activeTab, setActiveTab] = useState('trend')
-
-  // UI state
-  const [loading, setLoading] = useState({ indicators: false, data: false, analysis: false })
+  const [loadingData, setLoadingData] = useState(false)
   const [error, setError] = useState(null)
   const [showSave, setShowSave] = useState(false)
   const [saveForm, setSaveForm] = useState({ title: '', description: '' })
-  const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    setLoading(l => ({ ...l, indicators: true }))
-    getIndicators()
-      .then(setIndicators)
-      .catch(() => setError('Could not load indicators. Is the backend running at ' + (import.meta.env.VITE_API_URL ?? 'http://localhost:8000') + '?'))
-      .finally(() => setLoading(l => ({ ...l, indicators: false })))
-  }, [])
+  const displayError = error || analysisError
 
-  // Filter indicator list as the user types
-  const filteredIndicators = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return indicators.slice(0, 80)
-    return indicators.filter(i =>
-      i.name?.toLowerCase().includes(q) || i.code?.toLowerCase().includes(q)
-    ).slice(0, 80)
-  }, [indicators, search])
-
-  async function loadIndicatorData(indicator) {
+  async function handleIndicatorSelect(indicator) {
     setSelectedIndicator(indicator)
-    setShowDropdown(false)
-    setSearch(indicator.name)
     setRawData([])
     setSelectedCountries([])
-    setTrendResult(null)
-    setAnomalyResult(null)
     setError(null)
-
-    setLoading(l => ({ ...l, data: true }))
+    reset()
+    setLoadingData(true)
     try {
-      const data = await getIndicatorData(indicator.code)
+      const data = await fetchData(indicator.code)
       const countries = [...new Set(data.map(r => r.country))].filter(Boolean).sort()
       const years = data.map(r => r.year).filter(Boolean)
       const minY = Math.min(...years)
       const maxY = Math.max(...years)
-
       setRawData(data)
       setAvailableCountries(countries)
       setSelectedCountries(countries.slice(0, 3))
@@ -85,7 +57,7 @@ export default function Explorer() {
     } catch (e) {
       setError(e.response?.data?.detail ?? 'Failed to load indicator data.')
     } finally {
-      setLoading(l => ({ ...l, data: false }))
+      setLoadingData(false)
     }
   }
 
@@ -95,11 +67,10 @@ export default function Explorer() {
         ? prev.filter(x => x !== c)
         : prev.length < MAX_COUNTRIES ? [...prev, c] : prev
     )
-    setTrendResult(null)
-    setAnomalyResult(null)
+    reset()
   }
 
-  async function runAnalysis() {
+  async function handleRunAnalysis() {
     const filtered = rawData.filter(r =>
       selectedCountries.includes(r.country) &&
       r.year >= yearMin && r.year <= yearMax
@@ -109,23 +80,22 @@ export default function Explorer() {
       return
     }
     setError(null)
-    setLoading(l => ({ ...l, analysis: true }))
-    try {
-      const [trend, anomaly] = await Promise.all([
-        getTrend(filtered, 5),
-        getAnomalies(filtered, 5),
-      ])
-      setTrendResult(trend)
-      setAnomalyResult(anomaly)
-      setActiveTab('trend')
-    } catch (e) {
-      setError(e.response?.data?.detail ?? 'Analysis failed. Check backend logs.')
-    } finally {
-      setLoading(l => ({ ...l, analysis: false }))
-    }
+    const result = await runAnalysis(filtered, 5, 5)
+    if (result) setActiveTab('trend')
   }
 
-  // Build chart data: year-keyed object with one key per country + trend key
+  async function handleSaveAnalysis() {
+    await saveAnalysis({
+      title: saveForm.title.trim(),
+      description: saveForm.description.trim() || null,
+      indicator_code: selectedIndicator.code,
+      countries: selectedCountries,
+      year_start: yearMin,
+      year_end: yearMax,
+      config: trendResult ?? {},
+    })
+  }
+
   const chartData = useMemo(() => {
     if (!rawData.length) return []
     const filtered = rawData.filter(r =>
@@ -161,30 +131,10 @@ export default function Explorer() {
       .sort((a, b) => b.year - a.year || a.country.localeCompare(b.country))
   , [rawData, selectedCountries, yearMin, yearMax])
 
-  async function saveAnalysis() {
-    setSaving(true)
-    try {
-      await createAnalysis({
-        title: saveForm.title.trim(),
-        description: saveForm.description.trim() || null,
-        indicator_code: selectedIndicator.code,
-        countries: selectedCountries,
-        year_start: yearMin,
-        year_end: yearMax,
-        config: trendResult ?? {},
-      })
-      navigate('/dashboard')
-    } catch (e) {
-      setError(e.response?.data?.detail ?? 'Failed to save analysis.')
-      setSaving(false)
-    }
-  }
-
   const hasResults = trendResult || anomalyResult
 
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-5 pb-28 md:pb-8">
-      {/* Header */}
       <div>
         <h1 className="font-display text-2xl md:text-3xl font-bold text-white mb-1">Explorer</h1>
         <p className="text-slate-400 font-sans text-sm">
@@ -192,63 +142,28 @@ export default function Explorer() {
         </p>
       </div>
 
-      {/* Error banner */}
-      {error && (
+      {displayError && (
         <div className="flex items-start gap-2.5 bg-crimson/10 border border-crimson/30 text-crimson rounded-xl px-4 py-3 text-sm font-sans">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 mt-0.5 shrink-0">
             <circle cx="12" cy="12" r="10" />
             <line x1="12" y1="8" x2="12" y2="12" />
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
-          <span>{error}</span>
+          <span>{displayError}</span>
         </div>
       )}
 
-      {/* ── Indicator selector ── */}
       <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5">
-        <label className="block font-sans text-xs text-slate-500 mb-2 uppercase tracking-widest">
-          Indicator
-        </label>
-        <div className="relative">
-          <input
-            value={search}
-            onChange={e => { setSearch(e.target.value); setShowDropdown(true) }}
-            onFocus={() => setShowDropdown(true)}
-            placeholder={loading.indicators ? 'Loading…' : 'Search by name or code (e.g. "malaria" or "MALARIA_EST_DEATHS")'}
-            disabled={loading.indicators}
-            className="w-full bg-slate-800/50 border border-white/10 rounded-xl px-4 py-2.5 text-sm
-              font-sans text-slate-100 placeholder:text-slate-600 outline-none
-              focus:border-teal/40 focus:shadow-[0_0_0_3px_rgba(0,212,170,0.07)] transition-all"
-          />
-          {loading.indicators && (
-            <Spinner size="sm" className="absolute right-3 top-1/2 -translate-y-1/2" />
-          )}
-
-          {showDropdown && filteredIndicators.length > 0 && !loading.indicators && (
-            <div className="absolute z-30 mt-1.5 w-full bg-slate-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden">
-              <div className="max-h-56 overflow-y-auto divide-y divide-white/[0.04]">
-                {filteredIndicators.map(ind => (
-                  <button
-                    key={ind.code}
-                    onMouseDown={() => loadIndicatorData(ind)}
-                    className="w-full text-left px-4 py-2.5 hover:bg-teal/10 transition-colors flex items-center gap-3"
-                  >
-                    <span className="font-mono text-[10px] text-teal shrink-0 bg-teal/10 border border-teal/20 rounded px-1.5 py-0.5 whitespace-nowrap">
-                      {ind.code}
-                    </span>
-                    <span className="font-sans text-sm text-slate-300 truncate">{ind.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        <IndicatorSearch
+          indicators={indicators}
+          loading={loadingIndicators}
+          onSelect={handleIndicatorSelect}
+          placeholder='Search by name or code (e.g. "malaria" or "MALARIA_EST_DEATHS")'
+        />
       </div>
 
-      {/* ── Controls: countries + year range ── */}
       {rawData.length > 0 && (
         <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5 space-y-4">
-          {/* Country chips */}
           <div>
             <p className="font-sans text-xs text-slate-500 mb-2.5 uppercase tracking-widest">
               Countries <span className="text-slate-700 normal-case">— select up to {MAX_COUNTRIES}</span>
@@ -270,7 +185,6 @@ export default function Explorer() {
             </div>
           </div>
 
-          {/* Year range */}
           <div>
             <p className="font-sans text-xs text-slate-500 mb-2.5 uppercase tracking-widest">Year range</p>
             <div className="flex items-center gap-3">
@@ -279,7 +193,7 @@ export default function Explorer() {
                 value={yearMin}
                 min={dataYearBounds[0]}
                 max={yearMax - 1}
-                onChange={e => { setYearMin(Number(e.target.value)); setTrendResult(null); setAnomalyResult(null) }}
+                onChange={e => { setYearMin(Number(e.target.value)); reset() }}
                 className="w-24 bg-slate-800/50 border border-white/10 rounded-lg px-3 py-1.5
                   font-mono text-sm text-slate-100 outline-none focus:border-teal/40 transition-colors text-center"
               />
@@ -289,7 +203,7 @@ export default function Explorer() {
                 value={yearMax}
                 min={yearMin + 1}
                 max={dataYearBounds[1]}
-                onChange={e => { setYearMax(Number(e.target.value)); setTrendResult(null); setAnomalyResult(null) }}
+                onChange={e => { setYearMax(Number(e.target.value)); reset() }}
                 className="w-24 bg-slate-800/50 border border-white/10 rounded-lg px-3 py-1.5
                   font-mono text-sm text-slate-100 outline-none focus:border-teal/40 transition-colors text-center"
               />
@@ -299,32 +213,28 @@ export default function Explorer() {
             </div>
           </div>
 
-          {/* Run button */}
           <button
-            onClick={runAnalysis}
-            disabled={!selectedCountries.length || loading.analysis}
+            onClick={handleRunAnalysis}
+            disabled={!selectedCountries.length || loadingAnalysis}
             className="inline-flex items-center gap-2 bg-teal text-navy font-display font-bold px-5 py-2.5
               rounded-xl hover:bg-teal/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all
               shadow-[0_0_16px_rgba(0,212,170,0.25)]"
           >
-            {loading.analysis && <Spinner size="sm" />}
-            {loading.analysis ? 'Analysing…' : 'Run Analysis'}
+            {loadingAnalysis && <Spinner size="sm" />}
+            {loadingAnalysis ? 'Analysing…' : 'Run Analysis'}
           </button>
         </div>
       )}
 
-      {/* Loading data spinner */}
-      {loading.data && (
+      {loadingData && (
         <div className="flex items-center justify-center gap-3 py-12 text-slate-500">
           <Spinner />
           <span className="font-sans text-sm">Loading WHO data…</span>
         </div>
       )}
 
-      {/* ── Results ── */}
       {hasResults && (
         <div className="space-y-4">
-          {/* Tab bar */}
           <div className="flex gap-1 p-1 bg-white/[0.03] border border-white/10 rounded-xl w-full sm:w-fit">
             {[
               { key: 'trend', label: 'Trend Chart' },
@@ -345,7 +255,6 @@ export default function Explorer() {
             ))}
           </div>
 
-          {/* Trend tab */}
           {activeTab === 'trend' && trendResult && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -381,7 +290,6 @@ export default function Explorer() {
             </div>
           )}
 
-          {/* Anomalies tab */}
           {activeTab === 'anomalies' && anomalyResult && (
             <div className="space-y-4">
               {anomalyResult.anomalies?.length === 0 ? (
@@ -393,7 +301,6 @@ export default function Explorer() {
                 </div>
               ) : (
                 <>
-                  {/* AnomalyChart -- visualises the first selected country with pulsing crimson dots */}
                   <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5">
                     <p className="font-sans text-sm text-slate-400 mb-4">
                       <span className="text-slate-200 font-medium">{selectedCountries[0]}</span>
@@ -406,7 +313,6 @@ export default function Explorer() {
                     />
                   </div>
 
-                  {/* Anomaly detail list */}
                   <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5">
                     <p className="font-sans text-sm text-slate-500 mb-3">
                       {anomalyResult.total_anomalies} anomalous year{anomalyResult.total_anomalies !== 1 ? 's' : ''} detected
@@ -435,7 +341,6 @@ export default function Explorer() {
             </div>
           )}
 
-          {/* Raw data tab */}
           {activeTab === 'raw' && (
             <div className="bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden">
               <div className="overflow-x-auto">
@@ -463,7 +368,6 @@ export default function Explorer() {
             </div>
           )}
 
-          {/* Save analysis */}
           {!showSave ? (
             <button
               onClick={() => setShowSave(true)}
@@ -497,7 +401,7 @@ export default function Explorer() {
               />
               <div className="flex items-center gap-2">
                 <button
-                  onClick={saveAnalysis}
+                  onClick={handleSaveAnalysis}
                   disabled={!saveForm.title.trim() || saving}
                   className="inline-flex items-center gap-2 bg-teal text-navy font-display font-bold px-4 py-2
                     rounded-lg text-sm hover:bg-teal/90 disabled:opacity-50 transition-all"
@@ -517,8 +421,7 @@ export default function Explorer() {
         </div>
       )}
 
-      {/* Empty prompt */}
-      {!loading.indicators && !loading.data && !rawData.length && !error && (
+      {!loadingIndicators && !loadingData && !rawData.length && !displayError && (
         <EmptyState
           icon={
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-7 h-7">
@@ -528,11 +431,6 @@ export default function Explorer() {
           title="Pick an indicator to start"
           message="Search any of the 2 000+ WHO Global Health Observatory indicators above to begin."
         />
-      )}
-
-      {/* Backdrop to close dropdown */}
-      {showDropdown && (
-        <div className="fixed inset-0 z-20" onClick={() => setShowDropdown(false)} />
       )}
     </div>
   )

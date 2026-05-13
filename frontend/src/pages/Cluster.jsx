@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
-import { getIndicatorData, getIndicators } from '../api/indicators'
+import { useMemo, useState } from 'react'
 import { getCluster } from '../api/stats'
 import ClusterMap from '../components/charts/ClusterMap'
 import EmptyState from '../components/ui/EmptyState'
+import IndicatorSearch from '../components/ui/IndicatorSearch'
 import Spinner from '../components/ui/Spinner'
 import StatBadge from '../components/ui/StatBadge'
+import useIndicators from '../hooks/useIndicators'
 
-// Distinct colours for up to 8 clusters
 const CLUSTER_COLORS = [
   { bg: 'bg-teal/10', border: 'border-teal/30', text: 'text-teal', dot: '#00d4aa' },
   { bg: 'bg-blue-400/10', border: 'border-blue-400/30', text: 'text-blue-400', dot: '#60a5fa' },
@@ -19,67 +19,46 @@ const CLUSTER_COLORS = [
 ]
 
 export default function Cluster() {
-  const [indicators, setIndicators] = useState([])
-  const [search, setSearch] = useState('')
-  const [showDropdown, setShowDropdown] = useState(false)
-  const [selectedIndicator, setSelectedIndicator] = useState(null)
+  const { indicators, loading: loadingIndicators, fetchData } = useIndicators()
 
+  const [selectedIndicator, setSelectedIndicator] = useState(null)
   const [rawData, setRawData] = useState([])
   const [nClusters, setNClusters] = useState(4)
   const [clusterResult, setClusterResult] = useState([])
   const [searchCountry, setSearchCountry] = useState('')
 
-  const [loading, setLoading] = useState({ indicators: false, data: false, cluster: false })
+  const [loadingData, setLoadingData] = useState(false)
+  const [loadingCluster, setLoadingCluster] = useState(false)
   const [error, setError] = useState(null)
 
-  useEffect(() => {
-    setLoading(l => ({ ...l, indicators: true }))
-    getIndicators()
-      .then(setIndicators)
-      .catch(() => setError('Could not load indicators. Is the backend running?'))
-      .finally(() => setLoading(l => ({ ...l, indicators: false })))
-  }, [])
-
-  const filteredIndicators = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return indicators.slice(0, 80)
-    return indicators.filter(i =>
-      i.name?.toLowerCase().includes(q) || i.code?.toLowerCase().includes(q)
-    ).slice(0, 80)
-  }, [indicators, search])
-
-  async function loadData(ind) {
+  async function handleIndicatorSelect(ind) {
     setSelectedIndicator(ind)
-    setShowDropdown(false)
-    setSearch(ind.name)
     setRawData([])
     setClusterResult([])
     setError(null)
-    setLoading(l => ({ ...l, data: true }))
+    setLoadingData(true)
     try {
-      setRawData(await getIndicatorData(ind.code))
+      setRawData(await fetchData(ind.code))
     } catch (e) {
       setError(e.response?.data?.detail ?? 'Failed to load indicator data.')
     } finally {
-      setLoading(l => ({ ...l, data: false }))
+      setLoadingData(false)
     }
   }
 
   async function runClustering() {
     if (!rawData.length) return
     setError(null)
-    setLoading(l => ({ ...l, cluster: true }))
+    setLoadingCluster(true)
     try {
-      const result = await getCluster(rawData, nClusters)
-      setClusterResult(result)
+      setClusterResult(await getCluster(rawData, nClusters))
     } catch (e) {
       setError(e.response?.data?.detail ?? 'Clustering failed.')
     } finally {
-      setLoading(l => ({ ...l, cluster: false }))
+      setLoadingCluster(false)
     }
   }
 
-  // Summary: one entry per cluster
   const clusterSummary = useMemo(() => {
     const map = {}
     for (const r of clusterResult) {
@@ -119,45 +98,13 @@ export default function Cluster() {
         </div>
       )}
 
-      {/* Indicator selector + cluster controls */}
       <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5 space-y-4">
-        <div>
-          <label className="block font-sans text-xs text-slate-500 mb-2 uppercase tracking-widest">Indicator</label>
-          <div className="relative">
-            <input
-              value={search}
-              onChange={e => { setSearch(e.target.value); setShowDropdown(true) }}
-              onFocus={() => setShowDropdown(true)}
-              placeholder={loading.indicators ? 'Loading…' : 'Search indicator…'}
-              disabled={loading.indicators}
-              className="w-full bg-slate-800/50 border border-white/10 rounded-xl px-4 py-2.5 text-sm
-                font-sans text-slate-100 placeholder:text-slate-600 outline-none
-                focus:border-teal/40 transition-all"
-            />
-            {loading.indicators && <Spinner size="sm" className="absolute right-3 top-1/2 -translate-y-1/2" />}
+        <IndicatorSearch
+          indicators={indicators}
+          loading={loadingIndicators}
+          onSelect={handleIndicatorSelect}
+        />
 
-            {showDropdown && filteredIndicators.length > 0 && !loading.indicators && (
-              <div className="absolute z-30 mt-1.5 w-full bg-slate-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden">
-                <div className="max-h-52 overflow-y-auto divide-y divide-white/[0.04]">
-                  {filteredIndicators.map(ind => (
-                    <button
-                      key={ind.code}
-                      onMouseDown={() => loadData(ind)}
-                      className="w-full text-left px-4 py-2.5 hover:bg-teal/10 transition-colors flex items-center gap-3"
-                    >
-                      <span className="font-mono text-[10px] text-teal shrink-0 bg-teal/10 border border-teal/20 rounded px-1.5 py-0.5">
-                        {ind.code}
-                      </span>
-                      <span className="font-sans text-sm text-slate-300 truncate">{ind.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Cluster count */}
         {rawData.length > 0 && (
           <div>
             <label className="block font-sans text-xs text-slate-500 mb-2.5 uppercase tracking-widest">
@@ -172,7 +119,7 @@ export default function Cluster() {
               className="w-48 accent-teal cursor-pointer"
             />
             <div className="flex justify-between w-48 mt-1">
-              {[2,3,4,5,6,7,8].map(n => (
+              {[2, 3, 4, 5, 6, 7, 8].map(n => (
                 <span key={n} className="font-mono text-[10px] text-slate-700">{n}</span>
               ))}
             </div>
@@ -182,31 +129,28 @@ export default function Cluster() {
         {rawData.length > 0 && (
           <button
             onClick={runClustering}
-            disabled={loading.cluster}
+            disabled={loadingCluster}
             className="inline-flex items-center gap-2 bg-teal text-navy font-display font-bold px-5 py-2.5
               rounded-xl hover:bg-teal/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all
               shadow-[0_0_16px_rgba(0,212,170,0.25)]"
           >
-            {loading.cluster && <Spinner size="sm" />}
-            {loading.cluster ? 'Clustering…' : `Cluster into ${nClusters} groups`}
+            {loadingCluster && <Spinner size="sm" />}
+            {loadingCluster ? 'Clustering…' : `Cluster into ${nClusters} groups`}
           </button>
         )}
       </div>
 
-      {loading.data && (
+      {loadingData && (
         <div className="flex items-center justify-center gap-3 py-12 text-slate-500">
           <Spinner />
           <span className="font-sans text-sm">Loading WHO data…</span>
         </div>
       )}
 
-      {/* Results */}
       {clusterResult.length > 0 && (
         <div className="space-y-4">
-          {/* D3 world map */}
           <ClusterMap clusterData={clusterResult} />
 
-          {/* Summary stat badges */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <StatBadge label="Countries clustered" value={clusterResult.length} />
             <StatBadge label="Clusters" value={nClusters} highlight />
@@ -214,7 +158,6 @@ export default function Cluster() {
             <StatBadge label="Algorithm" value="K-Means" />
           </div>
 
-          {/* Cluster legend chips */}
           <div className="flex flex-wrap gap-2">
             {clusterSummary.map(cs => {
               const c = CLUSTER_COLORS[cs.cluster % CLUSTER_COLORS.length]
@@ -228,7 +171,6 @@ export default function Cluster() {
             })}
           </div>
 
-          {/* Country search filter */}
           <input
             value={searchCountry}
             onChange={e => setSearchCountry(e.target.value)}
@@ -237,7 +179,6 @@ export default function Cluster() {
               font-mono text-slate-100 placeholder:text-slate-600 outline-none focus:border-teal/40 transition-all"
           />
 
-          {/* Results table */}
           <div className="bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -262,15 +203,9 @@ export default function Cluster() {
                           </span>
                         </td>
                         <td className="px-4 py-2.5 font-mono text-slate-300 text-xs">{r.country}</td>
-                        <td className="px-4 py-2.5 font-mono text-slate-400 text-xs">
-                          {r.mean_value?.toFixed(3) ?? '–'}
-                        </td>
-                        <td className="px-4 py-2.5 font-mono text-slate-500 text-xs">
-                          {r.trend_slope?.toFixed(4) ?? '–'}
-                        </td>
-                        <td className="px-4 py-2.5 font-mono text-slate-500 text-xs">
-                          {r.std_dev?.toFixed(3) ?? '–'}
-                        </td>
+                        <td className="px-4 py-2.5 font-mono text-slate-400 text-xs">{r.mean_value?.toFixed(3) ?? '–'}</td>
+                        <td className="px-4 py-2.5 font-mono text-slate-500 text-xs">{r.trend_slope?.toFixed(4) ?? '–'}</td>
+                        <td className="px-4 py-2.5 font-mono text-slate-500 text-xs">{r.std_dev?.toFixed(3) ?? '–'}</td>
                       </tr>
                     )
                   })}
@@ -281,7 +216,7 @@ export default function Cluster() {
         </div>
       )}
 
-      {!loading.indicators && !loading.data && !rawData.length && !error && (
+      {!loadingIndicators && !loadingData && !rawData.length && !error && (
         <EmptyState
           icon={
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-7 h-7">
@@ -300,8 +235,6 @@ export default function Cluster() {
           message="Select an indicator above to cluster all available countries by epidemiological similarity."
         />
       )}
-
-      {showDropdown && <div className="fixed inset-0 z-20" onClick={() => setShowDropdown(false)} />}
     </div>
   )
 }

@@ -1,66 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
-import { getIndicatorData, getIndicators } from '../api/indicators'
+import { useState } from 'react'
 import { getCorrelation } from '../api/stats'
 import ScatterPlot from '../components/charts/ScatterPlot'
 import EmptyState from '../components/ui/EmptyState'
+import IndicatorSearch from '../components/ui/IndicatorSearch'
 import Spinner from '../components/ui/Spinner'
 import StatBadge from '../components/ui/StatBadge'
-
-function IndicatorPicker({ label, indicators, loading, onSelect, selectedName }) {
-  const [search, setSearch] = useState(selectedName ?? '')
-  const [showDropdown, setShowDropdown] = useState(false)
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return indicators.slice(0, 60)
-    return indicators.filter(i =>
-      i.name?.toLowerCase().includes(q) || i.code?.toLowerCase().includes(q)
-    ).slice(0, 60)
-  }, [indicators, search])
-
-  return (
-    <div className="relative flex-1 min-w-0">
-      <label className="block font-sans text-xs text-slate-500 mb-2 uppercase tracking-widest">{label}</label>
-      <input
-        value={search}
-        onChange={e => { setSearch(e.target.value); setShowDropdown(true) }}
-        onFocus={() => setShowDropdown(true)}
-        placeholder={loading ? 'Loading…' : 'Search indicator…'}
-        disabled={loading}
-        className="w-full bg-slate-800/50 border border-white/10 rounded-xl px-4 py-2.5 text-sm
-          font-sans text-slate-100 placeholder:text-slate-600 outline-none
-          focus:border-teal/40 transition-all"
-      />
-      {loading && <Spinner size="sm" className="absolute right-3 top-[calc(50%+12px)] -translate-y-1/2" />}
-
-      {showDropdown && filtered.length > 0 && !loading && (
-        <>
-          <div className="absolute z-30 mt-1.5 w-full bg-slate-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden">
-            <div className="max-h-48 overflow-y-auto divide-y divide-white/[0.04]">
-              {filtered.map(ind => (
-                <button
-                  key={ind.code}
-                  onMouseDown={() => {
-                    setSearch(ind.name)
-                    setShowDropdown(false)
-                    onSelect(ind)
-                  }}
-                  className="w-full text-left px-4 py-2.5 hover:bg-teal/10 transition-colors flex items-center gap-3"
-                >
-                  <span className="font-mono text-[10px] text-teal shrink-0 bg-teal/10 border border-teal/20 rounded px-1.5 py-0.5">
-                    {ind.code}
-                  </span>
-                  <span className="font-sans text-sm text-slate-300 truncate">{ind.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="fixed inset-0 z-20" onClick={() => setShowDropdown(false)} />
-        </>
-      )}
-    </div>
-  )
-}
+import useIndicators from '../hooks/useIndicators'
 
 function strengthLabel(r) {
   const abs = Math.abs(r)
@@ -72,8 +17,8 @@ function strengthLabel(r) {
 }
 
 export default function Correlate() {
-  const [indicators, setIndicators] = useState([])
-  const [loadingIndicators, setLoadingIndicators] = useState(false)
+  const { indicators, loading: loadingIndicators, fetchData } = useIndicators()
+
   const [xIndicator, setXIndicator] = useState(null)
   const [yIndicator, setYIndicator] = useState(null)
   const [xData, setXData] = useState([])
@@ -82,20 +27,12 @@ export default function Correlate() {
   const [loading, setLoading] = useState({ x: false, y: false, corr: false })
   const [error, setError] = useState(null)
 
-  useEffect(() => {
-    setLoadingIndicators(true)
-    getIndicators()
-      .then(setIndicators)
-      .catch(() => setError('Could not load indicators. Is the backend running?'))
-      .finally(() => setLoadingIndicators(false))
-  }, [])
-
   async function loadX(ind) {
     setXIndicator(ind)
     setXData([])
     setCorrResult(null)
     setLoading(l => ({ ...l, x: true }))
-    try { setXData(await getIndicatorData(ind.code)) }
+    try { setXData(await fetchData(ind.code)) }
     catch (e) { setError(e.response?.data?.detail ?? 'Failed to load X indicator.') }
     finally { setLoading(l => ({ ...l, x: false })) }
   }
@@ -105,7 +42,7 @@ export default function Correlate() {
     setYData([])
     setCorrResult(null)
     setLoading(l => ({ ...l, y: true }))
-    try { setYData(await getIndicatorData(ind.code)) }
+    try { setYData(await fetchData(ind.code)) }
     catch (e) { setError(e.response?.data?.detail ?? 'Failed to load Y indicator.') }
     finally { setLoading(l => ({ ...l, y: false })) }
   }
@@ -115,17 +52,15 @@ export default function Correlate() {
     setError(null)
     setLoading(l => ({ ...l, corr: true }))
     try {
-      const result = await getCorrelation(xData, yData)
-      setCorrResult(result)
+      setCorrResult(await getCorrelation(xData, yData))
     } catch (e) {
       setError(e.response?.data?.detail ?? 'Correlation failed. Ensure both indicators share common countries and years.')
     } finally {
-      setLoading(l => ({ ...l, corr: false })) }
+      setLoading(l => ({ ...l, corr: false }))
+    }
   }
 
-  // Transform scatter_points [{x, y, country, year}] for ScatterPlot
   const scatterData = corrResult?.scatter_points ?? []
-
   const canRun = xData.length > 0 && yData.length > 0 && !loading.x && !loading.y
 
   return (
@@ -148,22 +83,19 @@ export default function Correlate() {
         </div>
       )}
 
-      {/* Two indicator pickers */}
       <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5 space-y-4">
         <div className="flex flex-col sm:flex-row gap-4">
-          <IndicatorPicker
+          <IndicatorSearch
             label="X axis indicator"
             indicators={indicators}
             loading={loadingIndicators}
             onSelect={loadX}
-            selectedName={xIndicator?.name}
           />
-          <IndicatorPicker
+          <IndicatorSearch
             label="Y axis indicator"
             indicators={indicators}
             loading={loadingIndicators}
             onSelect={loadY}
-            selectedName={yIndicator?.name}
           />
         </div>
 
@@ -188,10 +120,8 @@ export default function Correlate() {
         </div>
       </div>
 
-      {/* Results */}
       {corrResult && (
         <div className="space-y-4">
-          {/* Stat badges */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <StatBadge
               label="Pearson r"
@@ -214,7 +144,6 @@ export default function Correlate() {
             />
           </div>
 
-          {/* Interpretation */}
           {corrResult.pearson_r != null && (
             <div className={`px-4 py-3 rounded-xl border text-sm font-sans
               ${Math.abs(corrResult.pearson_r) >= 0.5
@@ -229,7 +158,6 @@ export default function Correlate() {
             </div>
           )}
 
-          {/* Scatter chart */}
           <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 md:p-5">
             <ScatterPlot
               data={scatterData}
