@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getIndicatorData, getIndicators } from '../api/indicators'
 import { getCluster } from '../api/stats'
+import ClusterMap from '../components/charts/ClusterMap'
 import EmptyState from '../components/ui/EmptyState'
 import Spinner from '../components/ui/Spinner'
 import StatBadge from '../components/ui/StatBadge'
@@ -202,6 +203,9 @@ export default function Cluster() {
       {/* Results */}
       {clusterResult.length > 0 && (
         <div className="space-y-4">
+          {/* D3 world map */}
+          <ClusterMap clusterData={clusterResult} />
+
           {/* Summary stat badges */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <StatBadge label="Countries clustered" value={clusterResult.length} />

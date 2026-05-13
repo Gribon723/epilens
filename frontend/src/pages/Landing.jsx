@@ -1,4 +1,12 @@
+import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
+
+const fadeUp = (delay = 0) => ({
+  initial: { opacity: 0, y: 20 },
+  whileInView: { opacity: 1, y: 0 },
+  viewport: { once: true },
+  transition: { duration: 0.4, ease: 'easeOut', delay },
+})
 
 const FEATURES = [
   {
@@ -120,8 +128,13 @@ export default function Landing() {
         <div className="absolute top-1/3 left-1/4 w-80 h-80 rounded-full bg-teal/[0.06] blur-3xl pointer-events-none" />
         <div className="absolute bottom-1/4 right-1/4 w-64 h-64 rounded-full bg-crimson/[0.06] blur-3xl pointer-events-none" />
 
-        {/* Globe placeholder -- will be replaced with D3 globe in F3 */}
-        <div className="relative mb-10 shrink-0">
+        {/* Globe */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.85 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
+          className="relative mb-10 shrink-0"
+        >
           <div className="w-52 h-52 md:w-64 md:h-64 rounded-full border border-teal/20 flex items-center justify-center
             shadow-[0_0_80px_rgba(0,212,170,0.12)] bg-white/[0.02] backdrop-blur-sm">
             <div className="w-36 h-36 md:w-44 md:h-44 rounded-full border border-teal/15 flex items-center justify-center bg-teal/5">
@@ -152,10 +165,15 @@ export default function Landing() {
               style={{ ...style, animationDelay: `${i * 0.4}s` }}
             />
           ))}
-        </div>
+        </motion.div>
 
         {/* Headline */}
-        <div className="max-w-3xl mx-auto">
+        <motion.div
+          className="max-w-3xl mx-auto"
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: 'easeOut', delay: 0.2 }}
+        >
           <div className="inline-flex items-center gap-2 bg-teal/10 border border-teal/20 rounded-full px-4 py-1.5 mb-6">
             <span className="w-1.5 h-1.5 rounded-full bg-teal animate-pulse" />
             <span className="text-xs font-mono text-teal tracking-widest uppercase">WHO Global Health Observatory</span>
@@ -187,7 +205,7 @@ export default function Landing() {
               Sign in
             </Link>
           </div>
-        </div>
+        </motion.div>
 
         {/* Scroll cue */}
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 text-slate-600 animate-bounce">
@@ -227,9 +245,10 @@ export default function Landing() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {FEATURES.map(({ icon, title, desc }) => (
-            <div
+          {FEATURES.map(({ icon, title, desc }, i) => (
+            <motion.div
               key={title}
+              {...fadeUp(i * 0.07)}
               className="group bg-white/[0.03] backdrop-blur-sm border border-white/10 rounded-2xl p-6
                 hover:border-teal/30 hover:bg-teal/[0.04] hover:shadow-[0_0_24px_rgba(0,212,170,0.08)]
                 transition-all duration-200"
@@ -240,7 +259,7 @@ export default function Landing() {
               </div>
               <h3 className="font-display font-semibold text-lg text-white mb-2">{title}</h3>
               <p className="font-sans text-slate-400 text-sm leading-relaxed">{desc}</p>
-            </div>
+            </motion.div>
           ))}
         </div>
       </section>
