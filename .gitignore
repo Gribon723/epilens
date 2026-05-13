@@ -1,0 +1,28 @@
+# ── Secrets ──────────────────────────────────────────────────────────────────
+backend/.env
+frontend/.env.local
+frontend/.env
+
+# ── Python ───────────────────────────────────────────────────────────────────
+backend/venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+.Python
+
+# ── Node ─────────────────────────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ── OS / editor ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ── Scratch (local working notes — never committed) ──────────────────────────
+scratch/
