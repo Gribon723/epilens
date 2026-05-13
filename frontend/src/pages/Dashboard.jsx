@@ -1,7 +1,8 @@
 export default function Dashboard() {
   return (
-    <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%'}}>
-      <h1 style={{fontFamily:'Syne,sans-serif',fontSize:'2.5rem',color:'#00d4aa'}}>Dashboard</h1>
+    <div className="p-6 md:p-8">
+      <h1 className="font-display text-3xl font-bold text-white mb-1">Dashboard</h1>
+      <p className="text-slate-400 font-sans text-sm">Your saved analyses and activity</p>
     </div>
   )
 }

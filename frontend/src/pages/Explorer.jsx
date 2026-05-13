@@ -1,7 +1,8 @@
 export default function Explorer() {
   return (
-    <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%'}}>
-      <h1 style={{fontFamily:'Syne,sans-serif',fontSize:'2.5rem',color:'#00d4aa'}}>Explorer</h1>
+    <div className="p-6 md:p-8">
+      <h1 className="font-display text-3xl font-bold text-white mb-1">Explorer</h1>
+      <p className="text-slate-400 font-sans text-sm">Browse indicators and visualise trends</p>
     </div>
   )
 }
